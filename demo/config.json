@@ -1,0 +1,10 @@
+{
+  "temperature_K": 50.0,
+  "box_size_A": 19.074,
+  "pressure_GPa": null,
+  "n_fixed_layers": 2,
+  "n_steps": 20000,
+  "timestep_fs": 0.5,
+  "log_every": 50,
+  "traj_every": 100
+}

@@ -32,6 +32,10 @@ except ImportError:
     pass
 
 # -- configuration ------------------------------------------------------------
+# MODE = "demo" (default): all tools return a bundled trajectory without
+#        touching any cluster. Lets anyone try the workflow with no setup.
+# MODE = "live": tools go to the cluster over SSH.
+MODE        = os.environ.get("VIBEMATSCI_MODE", "demo").lower()
 REMOTE_HOST = os.environ.get("VIBEMATSCI_HOST", "cluster")
 REMOTE_ROOT = os.environ.get("VIBEMATSCI_WORK_ROOT", "~/vibematsci_runs")
 MACE_ENV    = os.environ.get("VIBEMATSCI_MACE_ENV", "mace")
@@ -41,6 +45,9 @@ SCRIPTS_DIR   = HERE / "scripts"
 BUILD_SCRIPT  = SCRIPTS_DIR / "build_structure.py"
 MD_SCRIPT     = SCRIPTS_DIR / "run_md.py"
 SUBMIT_SCRIPT = SCRIPTS_DIR / "submit.sh"
+
+DEMO_DIR     = HERE / "demo"
+DEMO_JOB_ID  = "DEMO-001"
 
 mcp = FastMCP("vibematsci")
 
@@ -72,6 +79,22 @@ def _remote_workdir(run_name: str) -> str:
     return f"{REMOTE_ROOT}/{run_name}"
 
 
+def _demo_n_frames() -> int:
+    """Count frames in the bundled demo trajectory."""
+    try:
+        from ase.io import iread
+        return sum(1 for _ in iread(str(DEMO_DIR / "md.traj")))
+    except Exception:
+        return -1
+
+
+def _demo_config() -> dict:
+    p = DEMO_DIR / "config.json"
+    if p.exists():
+        return json.loads(p.read_text())
+    return {}
+
+
 # -- MCP tools ----------------------------------------------------------------
 @mcp.tool()
 def check_access() -> dict:
@@ -79,9 +102,18 @@ def check_access() -> dict:
 
     Returns: SSH status, remote hostname, GPU-related Slurm partitions,
     versions of mace/ase/torch in the remote env, and whether MPA-0 weights
-    are already cached on the cluster.
+    are already cached on the cluster. In demo mode, reports the bundled
+    trajectory.
     """
-    out: dict = {"host": REMOTE_HOST, "work_root": REMOTE_ROOT}
+    if MODE == "demo":
+        n_frames = len(list(DEMO_DIR.glob("md.traj"))) and _demo_n_frames()
+        return {
+            "mode": "demo",
+            "demo_dir": str(DEMO_DIR),
+            "trajectory_frames": n_frames,
+            "note": "Set VIBEMATSCI_MODE=live to drive a real cluster.",
+        }
+    out: dict = {"mode": "live", "host": REMOTE_HOST, "work_root": REMOTE_ROOT}
     r = _ssh("hostname")
     out["ssh_ok"] = r["returncode"] == 0
     out["remote_hostname"] = r["stdout"].strip()
@@ -135,6 +167,26 @@ def prepare_simulation(
         log_every: log every N steps.
         traj_every: trajectory frame every N steps.
     """
+    if MODE == "demo":
+        return {
+            "mode": "demo",
+            "run_name": run_name,
+            "config": {
+                "temperature_K": float(temperature_K),
+                "box_size_A": float(box_size_A),
+                "pressure_GPa": (None if pressure_GPa is None else float(pressure_GPa)),
+                "n_fixed_layers": int(n_fixed_layers),
+                "n_steps": int(n_steps),
+                "timestep_fs": float(timestep_fs),
+            },
+            "demo_config_actually_used": _demo_config(),
+            "note": (
+                "Demo mode: parameters are recorded but the bundled trajectory "
+                f"(see {DEMO_DIR}) is what every tool returns."
+            ),
+            "next": f"call submit_job(run_name='{run_name}')",
+        }
+
     for p in (BUILD_SCRIPT, MD_SCRIPT, SUBMIT_SCRIPT):
         if not p.exists():
             return {"error": f"local template missing: {p.relative_to(HERE)}"}
@@ -177,6 +229,13 @@ def prepare_simulation(
 @mcp.tool()
 def submit_job(run_name: str) -> dict:
     """Submit submit.sh in the run directory via sbatch."""
+    if MODE == "demo":
+        return {
+            "mode": "demo",
+            "job_id": DEMO_JOB_ID,
+            "run_name": run_name,
+            "note": "Demo mode: no real Slurm submission. Job 'completes' immediately.",
+        }
     work_dir = _remote_workdir(run_name)
     r = _ssh(f"cd {shlex.quote(work_dir)} && sbatch submit.sh")
     line = r["stdout"].strip()
@@ -194,8 +253,13 @@ def submit_job(run_name: str) -> dict:
 
 
 @mcp.tool()
-def monitor_job(job_id: int) -> dict:
+def monitor_job(job_id) -> dict:
     """Return current state of a Slurm job. Falls back to sacct for finished jobs."""
+    if MODE == "demo":
+        return {
+            "mode": "demo", "job_id": str(job_id), "running": False,
+            "state": "COMPLETED", "elapsed": "00:35:00", "exit_code": "0:0",
+        }
     r = _ssh(f"squeue -j {job_id} -h -o '%T|%M|%L|%R'")
     if r["stdout"].strip():
         parts = r["stdout"].strip().split("|") + ["", "", "", ""]
@@ -216,13 +280,19 @@ def monitor_job(job_id: int) -> dict:
 @mcp.tool()
 def list_jobs() -> dict:
     """List your Slurm jobs (`squeue -u $USER`)."""
+    if MODE == "demo":
+        return {"mode": "demo",
+                "jobs": f"{DEMO_JOB_ID}  gpu  demo  COMPLETED  00:35:00  0:00  (demo)"}
     r = _ssh("squeue -u $USER -o '%i %P %j %T %M %L %R'")
     return {"jobs": r["stdout"]}
 
 
 @mcp.tool()
-def cancel_job(job_id: int) -> dict:
+def cancel_job(job_id) -> dict:
     """Cancel a Slurm job (`scancel`)."""
+    if MODE == "demo":
+        return {"mode": "demo", "ok": True,
+                "note": "Demo mode: nothing to cancel."}
     r = _ssh(f"scancel {job_id}")
     return {"ok": r["returncode"] == 0, "stderr": r["stderr"].strip()}
 
@@ -230,6 +300,16 @@ def cancel_job(job_id: int) -> dict:
 @mcp.tool()
 def tail_log(run_name: str, lines: int = 30) -> dict:
     """Tail md.log and the most recent .out/.err file in the run directory."""
+    if MODE == "demo":
+        log = DEMO_DIR / "md.log"
+        if not log.exists():
+            return {"mode": "demo", "error": "demo md.log missing"}
+        text = log.read_text().splitlines()
+        return {
+            "mode": "demo",
+            "run_name": run_name,
+            "output": "\n".join(text[-lines:]),
+        }
     work_dir = _remote_workdir(run_name)
     r = _ssh(
         f"cd {shlex.quote(work_dir)} && "
@@ -247,6 +327,20 @@ def pull_results(run_name: str, local_dir: str) -> dict:
     Pulls: md.traj, md.log, initial.xyz, initial.traj, config.json,
     n_fixed_atoms.txt, *.out, *.err via rsync.
     """
+    if MODE == "demo":
+        local = Path(local_dir).expanduser().resolve()
+        local.mkdir(parents=True, exist_ok=True)
+        copied = []
+        for src in DEMO_DIR.iterdir():
+            dst = local / src.name
+            shutil.copy2(src, dst)
+            copied.append(src.name)
+        return {
+            "mode": "demo",
+            "local_dir": str(local),
+            "files": sorted(copied),
+            "next": f"call view_trajectory(path='{local}/md.traj')",
+        }
     if shutil.which("rsync") is None:
         return {"error": "rsync not installed on local machine"}
     work_dir = _remote_workdir(run_name)
@@ -272,8 +366,33 @@ def pull_results(run_name: str, local_dir: str) -> dict:
 
 
 @mcp.tool()
-def view_trajectory(path: str) -> dict:
-    """Open a local trajectory / structure with `ase gui` (background process)."""
+def get_demo_trajectory() -> dict:
+    """Return the path and metadata of the bundled demo trajectory.
+
+    The demo is a ~9 ps NVT freezing simulation of a 19.07 Å cubic water box
+    at 50 K with 2 fixed bottom ice layers (216 H₂O, 648 atoms, MACE-MPA-0).
+    """
+    traj = DEMO_DIR / "md.traj"
+    if not traj.exists():
+        return {"error": "demo trajectory missing from repo"}
+    return {
+        "trajectory_path": str(traj),
+        "log_path": str(DEMO_DIR / "md.log"),
+        "initial_xyz_path": str(DEMO_DIR / "initial.xyz"),
+        "config": _demo_config(),
+        "n_frames": _demo_n_frames(),
+        "view_command": f"ase gui {traj}",
+    }
+
+
+@mcp.tool()
+def view_trajectory(path: str = "") -> dict:
+    """Open a local trajectory / structure with `ase gui` (background process).
+
+    If `path` is omitted (or empty), opens the bundled demo trajectory.
+    """
+    if not path:
+        path = str(DEMO_DIR / "md.traj")
     p = Path(path).expanduser().resolve()
     if not p.exists():
         return {"error": f"file not found: {p}"}

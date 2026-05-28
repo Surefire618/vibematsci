@@ -8,15 +8,32 @@ visualize jobs end-to-end via a small set of tools — temperature, box size,
 pressure, and the number of fixed bottom ice layers are all exposed as
 parameters.
 
+## Modes
+
+- **demo** (default): every tool returns the bundled trajectory under `demo/`
+  — a ~9 ps NVT freezing simulation of a 19.07 Å cubic water box at 50 K
+  with 2 fixed bottom ice layers (216 H₂O, 648 atoms, MACE-MPA-0). No
+  cluster, no setup required. Anyone cloning this repo can walk through
+  prepare → submit → monitor → pull → view and get a real trajectory back.
+- **live**: tools go to a Slurm cluster over SSH and run the real simulation.
+  Set `VIBEMATSCI_MODE=live` plus the cluster connection variables (see
+  `.env.example`).
+
 ## Layout
 
 ```
 vibematsci/
 ├── mcp_server.py          # FastMCP server, all tools live here
-├── scripts/               # Pushed to the cluster by prepare_simulation
+├── scripts/               # Pushed to the cluster by prepare_simulation (live mode)
 │   ├── build_structure.py # Builds cubic box: partial ice + liquid water
 │   ├── run_md.py          # ASE NVT/NPT MD with MACE-MPA-0
 │   └── submit.sh          # Slurm wrapper (1 A100, 2 h)
+├── demo/                  # Bundled demo trajectory (used in demo mode)
+│   ├── md.traj            # 182 frames, 648 atoms, 19.07 Å cube
+│   ├── md.log
+│   ├── initial.xyz
+│   ├── config.json
+│   └── n_fixed_atoms.txt
 ├── .env.example           # Cluster connection settings template
 ├── requirements.txt
 └── README.md
@@ -75,7 +92,8 @@ Or add to `~/.claude/.mcp.json`:
 | `cancel_job` | `scancel` |
 | `tail_log` | Tail `md.log` and the latest `.out`/`.err` |
 | `pull_results` | `rsync` trajectory + logs back locally |
-| `view_trajectory` | Open a local `.traj`/`.xyz` with `ase gui` |
+| `view_trajectory` | Open a local `.traj`/`.xyz` with `ase gui` (defaults to the bundled demo) |
+| `get_demo_trajectory` | Return path + metadata of the bundled demo trajectory |
 
 ## Simulation parameters
 

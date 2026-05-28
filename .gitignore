@@ -11,3 +11,7 @@ __pycache__/
 .idea/
 .vscode/
 .DS_Store
+
+# Allow the bundled demo bundle
+!demo/
+!demo/*
