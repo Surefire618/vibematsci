@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.env
+.*.config.json
+*.traj
+*.xyz
+*.log
+*.out
+*.err
+.venv/
+.idea/
+.vscode/
+.DS_Store
