@@ -48,6 +48,24 @@ pip install -r requirements.txt
 cp .env.example .env       # then edit
 ```
 
+## Skybridge GPT app demo
+
+This repo also includes a minimal Skybridge app described by `SPEC.md`. It is a
+fake-data-only demo: submitting a task creates an in-memory mock job, viewing a
+running job shows `任务进行中`, and the completed sample task previews the
+bundled `demo/md.traj` trajectory in a 3Dmol.js viewer.
+
+```bash
+npm install
+npm test
+npm run build
+npm run dev
+```
+
+The Skybridge dev server prints local DevTools and MCP URLs. Use the
+`manage_demo_tasks` view tool to open the shared task workspace and
+`submit_demo_task` to create a mock running simulation.
+
 On the **cluster**, you need:
 
 - A Slurm-managed GPU partition (the bundled `submit.sh` requests one A100).
@@ -124,6 +142,27 @@ monitor_job(job_id=...)
 tail_log(run_name="ice_freeze_50K", lines=20)
 pull_results(run_name="ice_freeze_50K", local_dir="~/runs/ice_freeze_50K")
 view_trajectory(path="~/runs/ice_freeze_50K/md.traj")
+```
+
+## Web trajectory preview
+
+You can preview an ASE `.traj` file in a browser without opening `ase gui`:
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python traj_web.py --traj demo/md.traj
+```
+
+Then open <http://127.0.0.1:8765/>. The local server reads `.traj` files
+with ASE, converts selected frames to multi-frame XYZ, and renders them in the
+browser with 3Dmol.js. Use `stride` and `frames` in the UI to reduce payload
+size for long MD runs.
+
+To preview a downloaded run outside this repository:
+
+```bash
+.venv/bin/python traj_web.py --data-root ~/runs/ice_freeze_50K --traj md.traj
 ```
 
 ## License

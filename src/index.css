@@ -1,0 +1,16 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "@alpic-ai/ui/theme";
+
+@source "../node_modules/@alpic-ai/ui/src";
+
+html,
+body {
+  margin: 0;
+  background: transparent;
+}
+
+button,
+input {
+  font: inherit;
+}

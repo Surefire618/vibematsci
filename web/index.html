@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>vibematsci trajectory preview</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="https://3Dmol.org/build/3Dmol-min.js"></script>
+  </head>
+  <body>
+    <main class="shell">
+      <section class="toolbar" aria-label="Trajectory controls">
+        <div class="brand">
+          <h1>vibematsci</h1>
+          <p>ASE trajectory preview</p>
+        </div>
+
+        <label class="field path-field">
+          <span>Trajectory</span>
+          <select id="trajSelect"></select>
+        </label>
+
+        <label class="field">
+          <span>Stride</span>
+          <input id="strideInput" type="number" min="1" max="1000" value="1" />
+        </label>
+
+        <label class="field">
+          <span>Frames</span>
+          <input id="maxFramesInput" type="number" min="1" max="2000" value="250" />
+        </label>
+
+        <button id="loadButton" type="button">Load</button>
+      </section>
+
+      <section class="viewer-panel">
+        <div id="viewer" aria-label="Molecular trajectory viewer"></div>
+        <div id="status" role="status">Loading trajectory list...</div>
+      </section>
+
+      <section class="playbar" aria-label="Playback controls">
+        <button id="playButton" type="button" disabled>Play</button>
+        <label class="frame-control">
+          <span id="frameLabel">Frame 0 / 0</span>
+          <input id="frameSlider" type="range" min="0" max="0" value="0" disabled />
+        </label>
+        <div id="meta" class="meta"></div>
+      </section>
+    </main>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

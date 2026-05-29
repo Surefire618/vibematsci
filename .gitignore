@@ -11,6 +11,11 @@ __pycache__/
 .idea/
 .vscode/
 .DS_Store
+node_modules/
+dist/
+.skybridge/
+.alpic/
+tsconfig.tsbuildinfo
 
 # Allow the bundled demo bundle
 !demo/
